@@ -36,7 +36,7 @@ local function get_ps(pos, maxlight, max)
 						local p2 = {x=p.x+i, y=p.y+j, z=p.z+k}
 						local pstr = p2.x.." "..p2.y.." "..p2.z
 						if not tab_avoid[pstr]
-						and pos_allowed(pos, maxlight) then
+						and pos_allowed(p2, maxlight) then
 		minetest.chat_send_all("It big.")
 							tab[num] = p2
 							tab_avoid[pstr] = true
@@ -64,7 +64,7 @@ local function place_torches(pos, maxlight, player, name)
 	end
 	while next(ps) do
 		for n,pos in pairs(ps) do
-			local light = minetest.get_node_light(pos, 0.5)
+			local light = minetest.get_node_light(pos, 0.5) or 0
 			if light <= maxlight then
 				minetest.set_node(pos, {name = "default:torch"})
 				minetest.chat_send_player(name, "Torch placed.")
@@ -72,6 +72,7 @@ local function place_torches(pos, maxlight, player, name)
 			ps[n] = nil
 		end
 	end
+	return true
 end
 
 local function light_cave(player, name, maxlight)
@@ -79,7 +80,8 @@ local function light_cave(player, name, maxlight)
 	pos.y = pos.y+1.625
 	pos = vector.round(pos)
 	local dir = player:get_look_dir()
-	local bl, pos2 = minetest.line_of_sight(pos, vector.round(vector.multiply(dir, 20)), 1)
+	local p2 = vector.add(pos, vector.round(vector.multiply(dir, 20)))
+	local bl, pos2 = minetest.line_of_sight(pos, p2, 1)
 	if bl then
 		minetest.chat_send_player(name, "Could not find a node you look at.")
 		return
@@ -89,8 +91,9 @@ local function light_cave(player, name, maxlight)
 		minetest.chat_send_player(name, "Something went wrong.")
 		return
 	end
-	place_torches(pos, maxlight, player, name)
-	minetest.chat_send_player(name, "Successfully lit a cave.")
+	if place_torches(pos, maxlight, player, name) then
+		minetest.chat_send_player(name, "Successfully lit a cave.")
+	end
 end
 
 minetest.register_chatcommand("light_cave",{
@@ -99,7 +102,7 @@ minetest.register_chatcommand("light_cave",{
 	privs = {give = true},
 	func = function(name, param)
 		local player = minetest.get_player_by_name(name)
-		local maxlight = tonumber(param) or 10
+		local maxlight = tonumber(param) or 5
 		if not player then
 			return false, "Player not found"
 		end

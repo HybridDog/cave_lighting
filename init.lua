@@ -1,5 +1,6 @@
 local load_time_start = os.clock()
 
+-- tests if it's a possible place for a light node
 local function pos_allowed(pos, maxlight, name)
 	local light = minetest.get_node_light(pos, 0.5)
 	if not light
@@ -22,6 +23,7 @@ local function pos_allowed(pos, maxlight, name)
 	return false
 end
 
+-- finds out possible places for a light node in a cave
 local function get_ps(pos, maxlight, name, max)
 	local tab = {}
 	local num = 1
@@ -56,10 +58,12 @@ local function get_ps(pos, maxlight, name, max)
 	return tab
 end
 
+-- lits up a cave
 local function place_torches(pos, maxlight, player, name)
 	local node = player:get_inventory():get_stack("main", player:get_wield_index()):get_name()
 	local data = minetest.registered_nodes[node]
 	if not data then
+		-- support the chatcommand tool
 		node = player:get_inventory():get_stack("main", player:get_wield_index()+1):get_name()
 		data = minetest.registered_nodes[node]
 		if not data then
@@ -95,9 +99,10 @@ local function place_torches(pos, maxlight, player, name)
 			minetest.item_place_node(ItemStack(node), player, pt)
 		end
 	end
-	return count, data.description or ""
+	return count, data.description or node
 end
 
+-- searches the position the player looked at and lights the cave
 local function light_cave(player, name, maxlight)
 	minetest.chat_send_player(name, "lighting a cave…")
 	local pos = player:getpos()
@@ -121,13 +126,14 @@ local function light_cave(player, name, maxlight)
 	end
 end
 
+-- the chatcommand
 minetest.register_chatcommand("light_cave",{
 	description = "light a cave",
 	params = "[maxlight]",
 	privs = {give = true},
 	func = function(name, param)
 		local player = minetest.get_player_by_name(name)
-		local maxlight = tonumber(param) or 5
+		local maxlight = tonumber(param) or 7
 		if not player then
 			return false, "Player not found"
 		end

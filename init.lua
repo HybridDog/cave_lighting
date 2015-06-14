@@ -78,15 +78,24 @@ local function place_torches(pos, maxlight, player, name)
 		minetest.chat_send_player(name, "It doesn't seem to be dark there or the cave is too big.")
 		return
 	end
+	local sound = data.sounds
+	if sound then
+		sound = sound.place
+	end
+	local count = 0
 	for n,pt in pairs(ps) do
 		local pos = pt.above
 		local light = minetest.get_node_light(pos, 0.5) or 0
 		if light <= maxlight then
+			count = count+1
+			if sound then
+				minetest.sound_play(sound.name, {pos=pos, gain=sound.gain/count})
+			end
 			pt.type = "node"
 			minetest.item_place_node(ItemStack(node), player, pt)
 		end
 	end
-	return true
+	return count, data.description or ""
 end
 
 local function light_cave(player, name, maxlight)
@@ -106,8 +115,9 @@ local function light_cave(player, name, maxlight)
 		minetest.chat_send_player(name, "Something went wrong.")
 		return
 	end
-	if place_torches(pos, maxlight, player, name) then
-		minetest.chat_send_player(name, "Successfully lit a cave.")
+	local count, desc = place_torches(pos, maxlight, player, name)
+	if count then
+		minetest.chat_send_player(name, count.." "..desc.."s placed.")
 	end
 end
 

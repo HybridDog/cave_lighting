@@ -16,7 +16,7 @@ local function pos_allowed(pos, maxlight)
 			{x=pos.x, y=pos.y, z=pos.z+i},
 		}) do
 			if minetest.get_node(p2).name ~= "air" then
-				return true
+				return p2
 			end
 		end
 	end
@@ -24,9 +24,9 @@ local function pos_allowed(pos, maxlight)
 end
 
 local function get_ps(pos, maxlight, max)
-	local tab = {pos}
+	local tab = {}
+	local num = 1
 	local todo = {pos}
-	local num = 2
 	local tab_avoid = {[pos.x.." "..pos.y.." "..pos.z] = true}
 	while todo[1] do
 		for n,p in pairs(todo) do
@@ -35,16 +35,17 @@ local function get_ps(pos, maxlight, max)
 					for k = -1,1 do
 						local p2 = {x=p.x+i, y=p.y+j, z=p.z+k}
 						local pstr = p2.x.." "..p2.y.." "..p2.z
-						if not tab_avoid[pstr]
-						and pos_allowed(p2, maxlight) then
-		minetest.chat_send_all("It big.")
-							tab[num] = p2
-							tab_avoid[pstr] = true
-							num = num+1
-							table.insert(todo, p2)
-							if max
-							and num > max then
-								return false
+						if not tab_avoid[pstr] then
+							local atpos = pos_allowed(p2, maxlight)
+							if atpos then
+								tab[num] = {above=p2, under=atpos}
+								tab_avoid[pstr] = true
+								num = num+1
+								table.insert(todo, p2)
+								if max
+								and num > max then
+									return false
+								end
 							end
 						end
 					end
@@ -57,17 +58,19 @@ local function get_ps(pos, maxlight, max)
 end
 
 local function place_torches(pos, maxlight, player, name)
-	local ps = get_ps(pos, maxlight, 2000)
+	local ps = get_ps(pos, maxlight, 20000)
 	if not ps then
 		minetest.chat_send_player(name, "It doesn't seem to be dark there or the cave is too big.")
 		return
 	end
 	while next(ps) do
-		for n,pos in pairs(ps) do
+		for n,pt in pairs(ps) do
+			local pos = pt.above
 			local light = minetest.get_node_light(pos, 0.5) or 0
 			if light <= maxlight then
-				minetest.set_node(pos, {name = "default:torch"})
-				minetest.chat_send_player(name, "Torch placed.")
+				local stack = ItemStack("default:torch")
+				pt.type = "node"
+				minetest.item_place_node(stack, player, pt, param2)
 			end
 			ps[n] = nil
 		end
@@ -102,7 +105,7 @@ minetest.register_chatcommand("light_cave",{
 	privs = {give = true},
 	func = function(name, param)
 		local player = minetest.get_player_by_name(name)
-		local maxlight = tonumber(param) or 5
+		local maxlight = tonumber(param) or 4
 		if not player then
 			return false, "Player not found"
 		end

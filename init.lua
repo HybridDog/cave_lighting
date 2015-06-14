@@ -1,12 +1,11 @@
 local load_time_start = os.clock()
 
-local function pos_allowed(pos, maxlight)
+local function pos_allowed(pos, maxlight, name)
 	local light = minetest.get_node_light(pos, 0.5)
 	if not light
-	or light > maxlight then
-		return false
-	end
-	if minetest.get_node(pos).name ~= "air" then
+	or light > maxlight
+	or minetest.get_node(pos).name ~= "air"
+	or minetest.is_protected(pos, name) then
 		return false
 	end
 	for i = -1,1,2 do
@@ -23,11 +22,11 @@ local function pos_allowed(pos, maxlight)
 	return false
 end
 
-local function get_ps(pos, maxlight, max)
+local function get_ps(pos, maxlight, name, max)
 	local tab = {}
 	local num = 1
 	local todo = {pos}
-	local tab_avoid = {[pos.x.." "..pos.y.." "..pos.z] = true}
+	local tab_avoid = {}
 	while todo[1] do
 		for n,p in pairs(todo) do
 			for i = -1,1 do
@@ -36,7 +35,7 @@ local function get_ps(pos, maxlight, max)
 						local p2 = {x=p.x+i, y=p.y+j, z=p.z+k}
 						local pstr = p2.x.." "..p2.y.." "..p2.z
 						if not tab_avoid[pstr] then
-							local atpos = pos_allowed(p2, maxlight)
+							local atpos = pos_allowed(p2, maxlight, name)
 							if atpos then
 								tab[num] = {above=p2, under=atpos}
 								tab_avoid[pstr] = true
@@ -58,27 +57,40 @@ local function get_ps(pos, maxlight, max)
 end
 
 local function place_torches(pos, maxlight, player, name)
-	local ps = get_ps(pos, maxlight, 20000)
+	local node = player:get_inventory():get_stack("main", player:get_wield_index()):get_name()
+	local data = minetest.registered_nodes[node]
+	if not data then
+		node = player:get_inventory():get_stack("main", player:get_wield_index()+1):get_name()
+		data = minetest.registered_nodes[node]
+		if not data then
+			minetest.chat_send_player(name, "You need to have a node next to or as your wielded item.")
+			return
+		end
+	end
+	local light = data.light_source
+	if not light
+	or light < maxlight then
+		minetest.chat_send_player(name, "You need a node emitting light (enough light).")
+		return
+	end
+	local ps = get_ps(pos, maxlight, name, 20000)
 	if not ps then
 		minetest.chat_send_player(name, "It doesn't seem to be dark there or the cave is too big.")
 		return
 	end
-	while next(ps) do
-		for n,pt in pairs(ps) do
-			local pos = pt.above
-			local light = minetest.get_node_light(pos, 0.5) or 0
-			if light <= maxlight then
-				local stack = ItemStack("default:torch")
-				pt.type = "node"
-				minetest.item_place_node(stack, player, pt, param2)
-			end
-			ps[n] = nil
+	for n,pt in pairs(ps) do
+		local pos = pt.above
+		local light = minetest.get_node_light(pos, 0.5) or 0
+		if light <= maxlight then
+			pt.type = "node"
+			minetest.item_place_node(ItemStack(node), player, pt)
 		end
 	end
 	return true
 end
 
 local function light_cave(player, name, maxlight)
+	minetest.chat_send_player(name, "lighting a cave…")
 	local pos = player:getpos()
 	pos.y = pos.y+1.625
 	pos = vector.round(pos)
@@ -105,7 +117,7 @@ minetest.register_chatcommand("light_cave",{
 	privs = {give = true},
 	func = function(name, param)
 		local player = minetest.get_player_by_name(name)
-		local maxlight = tonumber(param) or 4
+		local maxlight = tonumber(param) or 5
 		if not player then
 			return false, "Player not found"
 		end

@@ -71,9 +71,9 @@ local function place_torches(pos, maxlight, player, name)
 			return
 		end
 	end
-	local light = data.light_source
-	if not light
-	or light < maxlight then
+	local nodelight = data.light_source
+	if not nodelight
+	or nodelight < maxlight then
 		minetest.chat_send_player(name, "You need a node emitting light (enough light).")
 		return
 	end
@@ -87,6 +87,29 @@ local function place_torches(pos, maxlight, player, name)
 		sound = sound.place
 	end
 	local count = 0
+
+	local l1 = math.max(2*maxlight-nodelight+1, 1)
+	local found = true
+	while found do
+		found = false
+		for n,pt in pairs(ps) do
+			local pos = pt.above
+			local light = minetest.get_node_light(pos, 0.5) or 0
+			if light == l1 then
+				count = count+1
+				if sound then
+					minetest.sound_play(sound.name, {pos=pos, gain=sound.gain/count})
+				end
+				pt.type = "node"
+				minetest.item_place_node(ItemStack(node), player, pt)
+				found = true
+				ps[n] = nil
+			elseif light > maxlight then
+				ps[n] = nil
+			end
+		end
+	end
+
 	for n,pt in pairs(ps) do
 		local pos = pt.above
 		local light = minetest.get_node_light(pos, 0.5) or 0
@@ -99,7 +122,8 @@ local function place_torches(pos, maxlight, player, name)
 			minetest.item_place_node(ItemStack(node), player, pt)
 		end
 	end
-	return count, data.description or node
+
+	return {count, data.description or node, nodelight}
 end
 
 -- searches the position the player looked at and lights the cave
@@ -120,9 +144,9 @@ local function light_cave(player, name, maxlight)
 		minetest.chat_send_player(name, "Something went wrong.")
 		return
 	end
-	local count, desc = place_torches(pos, maxlight, player, name)
-	if count then
-		minetest.chat_send_player(name, count.." "..desc.."s placed.")
+	local t = place_torches(pos, maxlight, player, name)
+	if t then
+		minetest.chat_send_player(name, t[1].." "..t[2].."s placed. (maxlight="..maxlight..", used_light="..t[3]..")")
 	end
 end
 
@@ -130,7 +154,7 @@ end
 minetest.register_chatcommand("light_cave",{
 	description = "light a cave",
 	params = "[maxlight]",
-	privs = {give = true},
+	privs = {give=true, interact=true},
 	func = function(name, param)
 		local player = minetest.get_player_by_name(name)
 		local maxlight = tonumber(param) or 7

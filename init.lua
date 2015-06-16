@@ -105,7 +105,7 @@ local function place_torches(pos, maxlight, player, name)
 	end
 	local count = 0
 
-	--[[	-- should search for optimal places for torches
+	-- [[	-- should search for optimal places for torches
 	local l1 = math.max(2*maxlight-nodelight+1, 1)
 	local found = true
 	while found do
@@ -115,7 +115,8 @@ local function place_torches(pos, maxlight, player, name)
 			local light = minetest.get_node_light(pos, 0.5) or 0
 			if light == l1 then
 				count = count+1
-				if sound then
+				if sound
+				and count < 50 then
 					minetest.sound_play(sound.name, {pos=pos, gain=sound.gain/count})
 				end
 				pt.type = "node"
@@ -133,7 +134,8 @@ local function place_torches(pos, maxlight, player, name)
 		local light = minetest.get_node_light(pos, 0.5) or 0
 		if light <= maxlight then
 			count = count+1
-			if sound then
+			if sound
+			and count < 50 then
 				minetest.sound_play(sound.name, {pos=pos, gain=sound.gain/count})
 			end
 			pt.type = "node"

@@ -157,9 +157,18 @@ local function light_cave(player, name, maxlight)
 		minetest.chat_send_player(name, "Could not find a node you look at.")
 		return
 	end
-	pos = vector.round(vector.subtract(pos2, dir))
-	if minetest.get_node(pos).name ~= "air" then
-		minetest.chat_send_player(name, "Angles > 45° aren't supported yet :G")
+	local pos = pos2
+	for _,c in pairs({"x", "y", "z"}) do
+		dir[c] = math.sign(dir[c])
+		pos[c] = pos[c]-dir[c]
+		if minetest.get_node(pos).name == "air" then
+			bl = true
+			break
+		end
+		pos[c] = pos[c]+dir[c]
+	end
+	if not bl then
+		minetest.chat_send_player(name, "Could not find air near the node you looked at.")
 		return
 	end
 	local t = place_torches(pos, maxlight, player, name)

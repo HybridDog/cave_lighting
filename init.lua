@@ -147,6 +147,8 @@ end
 -- searches the position the player looked at and lights the cave
 local function light_cave(player, name, maxlight)
 	minetest.chat_send_player(name, "lighting a cave…")
+
+	-- search the place where the player sees a dark cave
 	local pos = player:getpos()
 	pos.y = pos.y+1.625
 	pos = vector.round(pos)
@@ -157,6 +159,8 @@ local function light_cave(player, name, maxlight)
 		minetest.chat_send_player(name, "Could not find a node you look at.")
 		return
 	end
+
+	-- if rooms with 1 node thin walls are lighted the light nodes should be placed inside the room
 	local pos = pos2
 	for _,c in pairs({"x", "y", "z"}) do
 		dir[c] = math.sign(dir[c])
@@ -168,11 +172,15 @@ local function light_cave(player, name, maxlight)
 		pos[c] = pos[c]+dir[c]
 	end
 	if not bl then
-		minetest.chat_send_player(name, "Could not find air near the node you looked at.")
-		return
+		minetest.chat_send_player(name, "There does not seem to be air near the node you looked at.")
 	end
+
 	local t = place_torches(pos, maxlight, player, name)
 	if t then
+		if t[1] == 0 then
+			minetest.chat_send_player(name, "No nodes placed.")
+			return
+		end
 		minetest.chat_send_player(name, t[1].." "..t[2].."s placed. (maxlight="..maxlight..", used_light="..t[3]..")")
 	end
 end

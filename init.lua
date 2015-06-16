@@ -1,5 +1,22 @@
 local load_time_start = os.clock()
 
+-- tests if theres a node an e.g. torch is allowed to be placed on
+local function pos_placeable(pos)
+	local undernode = minetest.get_node(pos).name
+	if undernode == "air" then
+		return false
+	end
+	local data = minetest.registered_nodes[undernode]
+	if not data then
+		return false
+	end
+	if data.drawtype == "normal"
+	or not data.drawtype then
+		return true
+	end
+	return false
+end
+
 -- tests if it's a possible place for a light node
 local function pos_allowed(pos, maxlight, name)
 	local light = minetest.get_node_light(pos, 0.5)
@@ -15,7 +32,7 @@ local function pos_allowed(pos, maxlight, name)
 			{x=pos.x, y=pos.y+i, z=pos.z},
 			{x=pos.x, y=pos.y, z=pos.z+i},
 		}) do
-			if minetest.get_node(p2).name ~= "air" then
+			if pos_placeable(p2) then
 				return p2
 			end
 		end
@@ -88,6 +105,7 @@ local function place_torches(pos, maxlight, player, name)
 	end
 	local count = 0
 
+	--[[	-- should search for optimal places for torches
 	local l1 = math.max(2*maxlight-nodelight+1, 1)
 	local found = true
 	while found do
@@ -108,7 +126,7 @@ local function place_torches(pos, maxlight, player, name)
 				ps[n] = nil
 			end
 		end
-	end
+	end--]]
 
 	for n,pt in pairs(ps) do
 		local pos = pt.above
@@ -141,7 +159,7 @@ local function light_cave(player, name, maxlight)
 	end
 	pos = vector.round(vector.subtract(pos2, dir))
 	if minetest.get_node(pos).name ~= "air" then
-		minetest.chat_send_player(name, "Something went wrong.")
+		minetest.chat_send_player(name, "Angles > 45° aren't supported yet :G")
 		return
 	end
 	local t = place_torches(pos, maxlight, player, name)

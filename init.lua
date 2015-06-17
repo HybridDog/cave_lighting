@@ -94,7 +94,7 @@ local function place_torches(pos, maxlight, player, name)
 		minetest.chat_send_player(name, "You need a node emitting light (enough light).")
 		return
 	end
-	local ps = get_ps(pos, maxlight, name, 20000)
+	local ps = get_ps(pos, maxlight, name, 200^3)
 	if not ps then
 		minetest.chat_send_player(name, "It doesn't seem to be dark there or the cave is too big.")
 		return

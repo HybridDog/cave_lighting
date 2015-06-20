@@ -1,5 +1,10 @@
 local load_time_start = os.clock()
 
+local function inform(name, msg)
+	minetest.chat_send_player(name, msg)
+	minetest.log("info", "[cave_lighting] "..name..": "..msg)
+end
+
 -- tests if theres a node an e.g. torch is allowed to be placed on
 local function pos_placeable(pos)
 	local undernode = minetest.get_node(pos).name
@@ -84,19 +89,19 @@ local function place_torches(pos, maxlight, player, name)
 		node = player:get_inventory():get_stack("main", player:get_wield_index()+1):get_name()
 		data = minetest.registered_nodes[node]
 		if not data then
-			minetest.chat_send_player(name, "You need to have a node next to or as your wielded item.")
+			inform(name, "You need to have a node next to or as your wielded item.")
 			return
 		end
 	end
 	local nodelight = data.light_source
 	if not nodelight
 	or nodelight < maxlight then
-		minetest.chat_send_player(name, "You need a node emitting light (enough light).")
+		inform(name, "You need a node emitting light (enough light).")
 		return
 	end
 	local ps = get_ps(pos, maxlight, name, 200^3)
 	if not ps then
-		minetest.chat_send_player(name, "It doesn't seem to be dark there or the cave is too big.")
+		inform(name, "It doesn't seem to be dark there or the cave is too big.")
 		return
 	end
 	local sound = data.sounds
@@ -146,10 +151,8 @@ local function place_torches(pos, maxlight, player, name)
 	return {count, data.description or node, nodelight}
 end
 
--- searches the position the player looked at and lights the cave
-local function light_cave(player, name, maxlight)
-	minetest.chat_send_player(name, "lighting a cave…")
-
+-- gets something like pt.above, pt.under
+local function get_pt_air(player, name)
 	-- search the place where the player sees a dark cave
 	local pos = player:getpos()
 	pos.y = pos.y+1.625
@@ -158,12 +161,12 @@ local function light_cave(player, name, maxlight)
 	local p2 = vector.add(pos, vector.round(vector.multiply(dir, 20)))
 	local bl, pos2 = minetest.line_of_sight(pos, p2, 1)
 	if bl then
-		minetest.chat_send_player(name, "Could not find a node you look at.")
+		inform(name, "Could not find a node you look at.")
 		return
 	end
 
 	-- if rooms with 1 node thin walls are lighted the light nodes should be placed inside the room
-	local pos = pos2
+	local pos = vector.new(pos2)
 	for _,c in pairs({"x", "y", "z"}) do
 		dir[c] = math.sign(dir[c])
 		pos[c] = pos[c]-dir[c]
@@ -174,16 +177,27 @@ local function light_cave(player, name, maxlight)
 		pos[c] = pos[c]+dir[c]
 	end
 	if not bl then
-		minetest.chat_send_player(name, "There does not seem to be air near the node you looked at.")
+		inform(name, "There does not seem to be air near the node you looked at.")
+	end
+	return pos, pos2
+end
+
+-- searches the position the player looked at and lights the cave
+local function light_cave(player, name, maxlight)
+	inform(name, "lighting a cave…")
+
+	local pos = get_pt_air(player, name)
+	if not pos then
+		return
 	end
 
 	local t = place_torches(pos, maxlight, player, name)
 	if t then
 		if t[1] == 0 then
-			minetest.chat_send_player(name, "No nodes placed.")
+			inform(name, "No nodes placed.")
 			return
 		end
-		minetest.chat_send_player(name, t[1].." "..t[2].."s placed. (maxlight="..maxlight..", used_light="..t[3]..")")
+		inform(name, t[1].." "..t[2].."s placed. (maxlight="..maxlight..", used_light="..t[3]..")")
 	end
 end
 
@@ -194,13 +208,109 @@ minetest.register_chatcommand("light_cave",{
 	privs = {give=true, interact=true},
 	func = function(name, param)
 		local player = minetest.get_player_by_name(name)
-		local maxlight = tonumber(param) or 7
 		if not player then
 			return false, "Player not found"
 		end
-		light_cave(player, name, maxlight)
+		light_cave(player, name, tonumber(param) or 7)
 	end
 })
+
+
+-- lazy torch placing
+local light_making_players, timer
+
+-- the chatcommand
+minetest.register_chatcommand("auto_light_placing",{
+	description = "automatically places lights",
+	params = "[maxlight]",
+	privs = {give=true, interact=true},
+	func = function(name, param)
+		local player = minetest.get_player_by_name(name)
+		if not player then
+			return false, "Player not found"
+		end
+		light_making_players = light_making_players or {}
+		light_making_players[name] = tonumber(param) or 7
+		timer = -0.5
+	end
+})
+
+local function light_pt(player)
+	local node = player:get_inventory():get_stack("main", player:get_wield_index()):get_name()
+	local data = minetest.registered_nodes[node]
+	if not data then
+		-- support the chatcommand tool
+		node = player:get_inventory():get_stack("main", player:get_wield_index()+1):get_name()
+		data = minetest.registered_nodes[node]
+		if not data then
+			inform(name, "You need to have a node next to or as your wielded item.")
+			return
+		end
+	end
+end
+
+minetest.register_globalstep(function(dtime)
+	-- abort if noone uses it
+	if not light_making_players then
+		return
+	end
+
+	-- abort that it doesn't shoot too often (change it if your pc runs faster)
+	timer = timer+dtime
+	if timer < 0.1 then
+		return
+	end
+	timer = 0
+
+	local active
+	for name,maxlight in pairs(light_making_players) do
+		local player = minetest.get_player_by_name(name)
+		local pt = {type = "node"}
+		pt.above, pt.under = get_pt_air(player, name)
+		if pt.above
+		and pos_placeable(pt.under) then
+			local node = player:get_inventory():get_stack("main", player:get_wield_index()):get_name()
+			local data = minetest.registered_nodes[node]
+			local failed
+			if not data then
+				-- support the chatcommand tool
+				node = player:get_inventory():get_stack("main", player:get_wield_index()+1):get_name()
+				data = minetest.registered_nodes[node]
+				if not data then
+					inform(name, "You need to have a node next to or as your wielded item.")
+					failed = true
+				end
+			end
+			if data then
+				local nodelight = data.light_source
+				if not nodelight
+				or nodelight < maxlight then
+					inform(name, "You need a node emitting light (enough light).")
+					failed = true
+				end
+				local light = minetest.get_node_light(pt.above, 0.5) or 0
+				if light <= maxlight
+				and minetest.get_node(pt.above).name == "air" then
+					local sound = data.sounds
+					if sound then
+						sound = sound.place
+					end
+					if sound then
+						minetest.sound_play(sound.name, {pos=pt.above, gain=sound.gain})
+					end
+					minetest.item_place_node(ItemStack(node), player, pt)
+				end
+			end
+			if failed then
+				light_making_players[name] = nil
+				if not next(light_making_players) then
+					light_making_players = nil
+				end
+			end
+		end
+	end
+end)
+
 
 local time = math.floor(tonumber(os.clock()-load_time_start)*100+0.5)/100
 local msg = "[cave_lighting] loaded after ca. "..time

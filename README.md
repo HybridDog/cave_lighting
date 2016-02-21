@@ -1,7 +1,6 @@
 [Mod] cave lighting chatcommand [cave_lighting]
 
-This mod adds the chatcommand light_cave to automatically light up a cave with e.g. torches.  
-Including this readme and the other description the mod took me ~120 minutes.  
+This mod adds the chatcommand light_cave to automatically light up a cave with e.g. torches.
 
 **License:** see [LICENSE.txt](https://raw.githubusercontent.com/HybridDog/cave_lighting/master/LICENSE.txt)  
 **Download:** [zip](https://github.com/HybridDog/cave_lighting/archive/master.zip), [tar.gz](https://github.com/HybridDog/cave_lighting/archive/master.tar.gz)  

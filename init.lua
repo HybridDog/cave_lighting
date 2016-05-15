@@ -188,16 +188,15 @@ local function light_cave(player, name, maxlight)
 
 	local pos = get_pt_air(player, name)
 	if not pos then
-		return
+		return false, "no air found"
 	end
 
 	local t = place_torches(pos, maxlight, player, name)
 	if t then
 		if t[1] == 0 then
-			inform(name, "No nodes placed.")
-			return
+			return false, "No nodes placed."
 		end
-		inform(name, t[1].." "..t[2].."s placed. (maxlight="..maxlight..", used_light="..t[3]..")")
+		return true, t[1].." "..t[2].."s placed. (maxlight="..maxlight..", used_light="..t[3]..")"
 	end
 end
 
@@ -211,7 +210,7 @@ minetest.register_chatcommand("light_cave",{
 		if not player then
 			return false, "Player not found"
 		end
-		light_cave(player, name, tonumber(param) or 7)
+		return light_cave(player, name, tonumber(param) or 7)
 	end
 })
 

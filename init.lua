@@ -167,7 +167,7 @@ local function get_pt_air(player, name)
 
 	-- if rooms with 1 node thin walls are lighted the light nodes should be placed inside the room
 	local pos = vector.new(pos2)
-	for _,c in pairs({"x", "y", "z"}) do
+	for _,c in pairs{"x", "y", "z"} do
 		dir[c] = math.sign(dir[c])
 		pos[c] = pos[c]-dir[c]
 		if minetest.get_node(pos).name == "air" then

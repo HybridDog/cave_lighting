@@ -8,3 +8,7 @@ This mod adds the chatcommand light_cave to automatically light up a cave with e
 ![I'm a screenshot!](https://d.maxfile.ro/najmmmmguz.png)
 
 If you got ideas or found bugs, please tell them to me.
+
+
+TODO:  
+— streamline position selecting

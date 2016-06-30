@@ -1,4 +1,4 @@
-local load_time_start = os.clock()
+local load_time_start = minetest.get_us_time()
 
 local function inform(name, msg)
 	minetest.chat_send_player(name, msg)
@@ -32,11 +32,11 @@ local function pos_allowed(pos, maxlight, name)
 		return false
 	end
 	for i = -1,1,2 do
-		for _,p2 in pairs({
+		for _,p2 in pairs{
 			{x=pos.x+i, y=pos.y, z=pos.z},
 			{x=pos.x, y=pos.y+i, z=pos.z},
 			{x=pos.x, y=pos.y, z=pos.z+i},
-		}) do
+		} do
 			if pos_placeable(p2) then
 				return p2
 			end
@@ -49,32 +49,39 @@ end
 local function get_ps(pos, maxlight, name, max)
 	local tab = {}
 	local num = 1
+
 	local todo = {pos}
+	local nt = 1
+
 	local tab_avoid = {}
-	while todo[1] do
-		for n,p in pairs(todo) do
-			for i = -1,1 do
-				for j = -1,1 do
-					for k = -1,1 do
-						local p2 = {x=p.x+i, y=p.y+j, z=p.z+k}
-						local pstr = p2.x.." "..p2.y.." "..p2.z
-						if not tab_avoid[pstr] then
-							local atpos = pos_allowed(p2, maxlight, name)
-							if atpos then
-								tab[num] = {above=p2, under=atpos}
-								tab_avoid[pstr] = true
-								num = num+1
-								table.insert(todo, p2)
-								if max
-								and num > max then
-									return false
-								end
+	while nt ~= 0 do
+		local p = todo[nt]
+		todo[nt] = nil
+		nt = nt-1
+
+		for i = -1,1 do
+			for j = -1,1 do
+				for k = -1,1 do
+					local p2 = {x=p.x+i, y=p.y+j, z=p.z+k}
+					local vi = minetest.hash_node_position(p2)
+					if not tab_avoid[vi] then
+						local atpos = pos_allowed(p2, maxlight, name)
+						if atpos then
+							tab[num] = {above=p2, under=atpos}
+							num = num+1
+
+							nt = nt+1
+							todo[nt] = p2
+
+							tab_avoid[vi] = true
+							if max
+							and num > max then
+								return false
 							end
 						end
 					end
 				end
 			end
-			todo[n] = nil
 		end
 	end
 	return tab
@@ -82,11 +89,14 @@ end
 
 -- lits up a cave
 local function place_torches(pos, maxlight, player, name)
-	local node = player:get_inventory():get_stack("main", player:get_wield_index()):get_name()
+	-- get the light_source item
+	local inv = player:get_inventory()
+	local wi = player:get_wield_index()
+	local node = inv:get_stack("main", wi):get_name()
 	local data = minetest.registered_nodes[node]
 	if not data then
 		-- support the chatcommand tool
-		node = player:get_inventory():get_stack("main", player:get_wield_index()+1):get_name()
+		node = inv:get_stack("main", wi+1):get_name()
 		data = minetest.registered_nodes[node]
 		if not data then
 			inform(name, "You need to have a node next to or as your wielded item.")
@@ -99,6 +109,7 @@ local function place_torches(pos, maxlight, player, name)
 		inform(name, "You need a node emitting light (enough light).")
 		return
 	end
+	-- get possible positions
 	local ps = get_ps(pos, maxlight, name, 200^3)
 	if not ps then
 		inform(name, "It doesn't seem to be dark there or the cave is too big.")
@@ -168,13 +179,13 @@ local function get_pt_air(player, name)
 	-- if rooms with 1 node thin walls are lighted the light nodes should be placed inside the room
 	local pos = vector.new(pos2)
 	for _,c in pairs{"x", "y", "z"} do
-		dir[c] = math.sign(dir[c])
-		pos[c] = pos[c]-dir[c]
+		local v = math.sign(dir[c])
+		pos[c] = pos[c]-v
 		if minetest.get_node(pos).name == "air" then
 			bl = true
 			break
 		end
-		pos[c] = pos[c]+dir[c]
+		pos[c] = pos[c]+v
 	end
 	if not bl then
 		inform(name, "There does not seem to be air near the node you looked at.")
@@ -261,7 +272,6 @@ minetest.register_globalstep(function(dtime)
 	end
 	timer = 0
 
-	local active
 	for name,maxlight in pairs(light_making_players) do
 		local player = minetest.get_player_by_name(name)
 		local pt = {type = "node"}
@@ -311,9 +321,9 @@ minetest.register_globalstep(function(dtime)
 end)
 
 
-local time = math.floor(tonumber(os.clock()-load_time_start)*100+0.5)/100
-local msg = "[cave_lighting] loaded after ca. "..time
-if time > 0.05 then
+local time = (minetest.get_us_time() - load_time_start) / 1000000
+local msg = "[cave_lighting] loaded after ca. " .. time .. " seconds."
+if time > 0.01 then
 	print(msg)
 else
 	minetest.log("info", msg)

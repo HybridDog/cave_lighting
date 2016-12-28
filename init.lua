@@ -145,7 +145,7 @@ local function place_torches(pos, maxlight, player, name)
 		end
 	end--]]
 
-	for n,pt in pairs(ps) do
+	for _,pt in pairs(ps) do
 		local pos = pt.above
 		local light = minetest.get_node_light(pos, 0.5) or 0
 		if light <= maxlight then
@@ -177,7 +177,7 @@ local function get_pt_air(player, name)
 	end
 
 	-- if rooms with 1 node thin walls are lighted the light nodes should be placed inside the room
-	local pos = vector.new(pos2)
+	pos = vector.new(pos2)
 	for _,c in pairs{"x", "y", "z"} do
 		local v = math.sign(dir[c])
 		pos[c] = pos[c]-v
@@ -244,20 +244,6 @@ minetest.register_chatcommand("auto_light_placing",{
 		timer = -0.5
 	end
 })
-
-local function light_pt(player)
-	local node = player:get_inventory():get_stack("main", player:get_wield_index()):get_name()
-	local data = minetest.registered_nodes[node]
-	if not data then
-		-- support the chatcommand tool
-		node = player:get_inventory():get_stack("main", player:get_wield_index()+1):get_name()
-		data = minetest.registered_nodes[node]
-		if not data then
-			inform(name, "You need to have a node next to or as your wielded item.")
-			return
-		end
-	end
-end
 
 minetest.register_globalstep(function(dtime)
 	-- abort if noone uses it

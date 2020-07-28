@@ -1,1 +1,1 @@
-WTFPL
+MIT

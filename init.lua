@@ -1,88 +1,101 @@
+
+local path = minetest.get_modpath"cave_lighting"
+local search_dfs = dofile(path .. "/fill_3d.lua")
+
 local function inform(name, msg)
 	minetest.chat_send_player(name, msg)
 	minetest.log("info", "[cave_lighting] "..name..": "..msg)
 end
 
--- tests if theres a node an e.g. torch is allowed to be placed on
+-- Like minetest.get_node but also works in unloaded areas
+local function get_node_loaded(pos)
+	local node = minetest.get_node_or_nil(pos)
+	if node then
+		return node
+	end
+	minetest.load_area(pos)
+	return minetest.get_node(pos)
+end
+
+-- Tests if theres a node an e.g. torch is allowed to be placed on
 local function pos_placeable(pos)
-	local undernode = minetest.get_node(pos).name
+	local undernode = get_node_loaded(pos).name
 	if undernode == "air" then
 		return false
 	end
 	local data = minetest.registered_nodes[undernode]
-	if not data then
-		return false
-	end
-	if data.drawtype == "normal"
-	or not data.drawtype then
+	if data
+	and (data.drawtype == "normal" or not data.drawtype)
+	and data.pointable and not data.buildable_to then
 		return true
 	end
 	return false
 end
 
--- tests if it's a possible place for a light node
+local moves_touch = {
+	{x = -1, y = 0, z = 0},
+	{x = 1, y = 0, z = 0},
+	{x = 0, y = -1, z = 0},
+	{x = 0, y = 1, z = 0},
+	{x = 0, y = 0, z = -1},
+	{x = 0, y = 0, z = 1},
+}
+local moves_near = {}
+for x = -1,1 do
+	for y = -1,1 do
+		for z = -1,1 do
+			if x*x + y*y + z*z > 0 then
+				moves_near[#moves_near+1] = {x = x, y = y, z = z}
+			end
+		end
+	end
+end
+
+-- Tests if it's a possible place for a light node
 local function pos_allowed(pos, maxlight, name)
 	local light = minetest.get_node_light(pos, 0.5)
 	if not light
 	or light > maxlight
-	or minetest.get_node(pos).name ~= "air"
+	or get_node_loaded(pos).name ~= "air"
 	or minetest.is_protected(pos, name) then
-		return false
+		return
 	end
-	for i = -1,1,2 do
-		for _,p2 in pairs{
-			{x=pos.x+i, y=pos.y, z=pos.z},
-			{x=pos.x, y=pos.y+i, z=pos.z},
-			{x=pos.x, y=pos.y, z=pos.z+i},
-		} do
-			if pos_placeable(p2) then
-				return p2
-			end
+	for k = 1, 6 do
+		local p2 = vector.add(pos, moves_touch[k])
+		if pos_placeable(p2) then
+			return p2
 		end
 	end
-	return false
 end
 
--- finds out possible places for a light node in a cave
-local function get_ps(pos, maxlight, name, max)
-	local tab = {}
-	local num = 1
-
-	local todo = {pos}
-	local nt = 1
-
-	local tab_avoid = {}
-	while nt ~= 0 do
-		local p = todo[nt]
-		todo[nt] = nil
-		nt = nt-1
-
-		for i = -1,1 do
-			for j = -1,1 do
-				for k = -1,1 do
-					local p2 = {x=p.x+i, y=p.y+j, z=p.z+k}
-					local vi = minetest.hash_node_position(p2)
-					if not tab_avoid[vi] then
-						local atpos = pos_allowed(p2, maxlight, name)
-						if atpos then
-							tab[num] = {above=p2, under=atpos}
-							num = num+1
-
-							nt = nt+1
-							todo[nt] = p2
-
-							tab_avoid[vi] = true
-							if max
-							and num > max then
-								return false
-							end
-						end
-					end
-				end
-			end
+-- Finds out possible places for a light node in a cave with an efficient
+-- variant of Depth First Search
+local function search_positions(startpos, maxlight, pname, max_positions)
+	local visited = {}
+	local found = {}
+	local num_found = 0
+	local function on_visit(pos)
+		local vi = minetest.hash_node_position(pos)
+		if visited[vi] then
+			return false
 		end
+		visited[vi] = true
+		if num_found > max_positions then
+			return false
+		end
+		local under_pos = pos_allowed(pos, maxlight, pname)
+		if under_pos then
+			num_found = num_found+1
+			found[num_found] = {under = under_pos, above = pos}
+			return true
+		end
+		return false
 	end
-	return tab
+	on_visit(startpos)
+	search_dfs(on_visit, startpos, vector.add, moves_near)
+	-- Do not return the positions if the search has found too many, to avoid
+	-- fragmented lighting
+	return num_found <= max_positions and num_found > 0 and found
 end
 
 -- Lights up a cave
@@ -97,22 +110,19 @@ local function place_torches(pos, maxlight, player, name)
 		node = inv:get_stack("main", wi+1):get_name()
 		data = minetest.registered_nodes[node]
 		if not data then
-			inform(name,
-				"You need to have a node next to or as your wielded item.")
-			return
+			return false,
+				"You need to have a node next to or as your wielded item."
 		end
 	end
 	local nodelight = data.light_source
 	if not nodelight
 	or nodelight < maxlight then
-		inform(name, "You need a node emitting light (enough light).")
-		return
+		return false, "You need a node emitting light (enough light)."
 	end
 	-- Get possible positions
-	local ps = get_ps(pos, maxlight, name, 200^3)
+	local ps = search_positions(pos, maxlight, name, 200^3)
 	if not ps then
-		inform(name, "It doesn't seem to be dark there or the cave is too big.")
-		return
+		return false, "It doesn't seem to be dark there or the cave is too big."
 	end
 	local sound = data.sounds
 	if sound then
@@ -121,37 +131,45 @@ local function place_torches(pos, maxlight, player, name)
 	local count = 0
 
 	-- [[	-- should search for optimal places for torches
-	local l1 = math.max(2*maxlight-nodelight+1, 1)
-	local found = true
-	while found do
-		found = false
-		for n,pt in pairs(ps) do
-			local pos = pt.above
-			local light = minetest.get_node_light(pos, 0.5) or 0
-			if light == l1 then
-				count = count+1
-				if sound
-				and count < 50 then
-					minetest.sound_play(sound.name, {pos=pos, gain=sound.gain/count})
-				end
-				pt.type = "node"
-				minetest.item_place_node(ItemStack(node), player, pt)
-				found = true
-				ps[n] = nil
-			elseif light > maxlight then
-				ps[n] = nil
+	-- The light depends on the manhattan distance to the light source.
+	-- If for example maxlight=4 and nodelight=7 and a light stripe is
+	-- (2,3,4,5,6,7), then I assume it is advisable to first put light nodes
+	-- where the light is 3: (6,7,6,5,6,7)
+	local l1 = math.max(maxlight - (nodelight - maxlight) + 2, 0)
+	local n = #ps
+	for k = n, 1, -1 do
+		local pt = ps[k]
+		local pos = pt.above
+		local light = minetest.get_node_light(pos, 0.5) or 0
+		if light == l1 then
+			count = count+1
+			if sound
+			and count < 50 then
+				minetest.sound_play(sound.name, {pos = pos,
+					gain = sound.gain / count})
 			end
+			pt.type = "node"
+			minetest.item_place_node(ItemStack(node), player, pt)
+			ps[k] = ps[n]
+			ps[n] = nil
+			n = n-1
+		elseif light > maxlight then
+			ps[k] = ps[n]
+			ps[n] = nil
+			n = n-1
 		end
 	end--]]
 
-	for _,pt in pairs(ps) do
+	for k = 1, n do
+		local pt = ps[k]
 		local pos = pt.above
 		local light = minetest.get_node_light(pos, 0.5) or 0
 		if light <= maxlight then
 			count = count+1
 			if sound
 			and count < 50 then
-				minetest.sound_play(sound.name, {pos=pos, gain=sound.gain/count})
+				minetest.sound_play(sound.name, {pos = pos,
+					gain = sound.gain / count})
 			end
 			pt.type = "node"
 			minetest.item_place_node(ItemStack(node), player, pt)
@@ -181,9 +199,9 @@ local function get_pointed_target(player)
 		return
 	end
 	local def_under = minetest.registered_nodes[
-		minetest.get_node(pointed.under).name]
+		get_node_loaded(pointed.under).name]
 	local def_above = minetest.registered_nodes[
-		minetest.get_node(pointed.above).name]
+		get_node_loaded(pointed.above).name]
 	if not def_under or not def_above
 	or not def_above.buildable_to or def_under.buildable_to then
 		-- Cannot place a node here
@@ -193,45 +211,48 @@ local function get_pointed_target(player)
 	return pointed.above, pointed.under
 end
 
--- searches the position the player looked at and lights the cave
-local function light_cave(player, name, maxlight)
-	local pos = get_pointed_target(player, name)
+-- Searches the position the player looked at and lights the cave
+local function light_cave(player, maxlight)
+	local pos = get_pointed_target(player)
 	if not pos then
 		return false, "No valid position for a torch placement found"
 	end
 
-	inform(name, "Lighting a cave…")
-	local t = place_torches(pos, maxlight, player, name)
-	if t then
-		if t[1] == 0 then
-			return false, "No nodes placed."
-		end
-		return true, t[1].." "..t[2].."s placed. (maxlight="..maxlight..", used_light="..t[3]..")"
+	inform(player:get_player_name(), "Lighting a cave…")
+	local t, errormsg = place_torches(pos, maxlight, player)
+	if not t then
+		return false, errormsg
 	end
+	if t[1] == 0 then
+		return false, "No nodes placed."
+	end
+	return true, ("%d \"%s\"s placed. (maxlight: %d, placed nodes' light: %d)"
+		):format(t[1], t[2], maxlight, t[3])
 end
 
--- the chatcommand
+-- Chatcommand to light a full cave
 minetest.register_chatcommand("light_cave",{
 	description = "light a cave",
-	params = "[maxlight]",
+	params = "[maxlight=7]",
 	privs = {give=true, interact=true},
 	func = function(name, param)
 		local player = minetest.get_player_by_name(name)
 		if not player then
 			return false, "Player not found"
 		end
-		return light_cave(player, name, tonumber(param) or 7)
+		return light_cave(player, tonumber(param) or 7)
 	end
 })
 
 
--- lazy torch placing
-local light_making_players, timer
+-- Lazy torch placing
 
--- the chatcommand
+local light_making_players
+
+-- Chatcommand to automatically light the way while playing
 minetest.register_chatcommand("auto_light_placing",{
 	description = "automatically places lights",
-	params = "[maxlight]",
+	params = "[maxlight=3]",
 	privs = {give=true, interact=true},
 	func = function(name, param)
 		local player = minetest.get_player_by_name(name)
@@ -239,39 +260,35 @@ minetest.register_chatcommand("auto_light_placing",{
 			return false, "Player not found"
 		end
 		light_making_players = light_making_players or {}
-		light_making_players[name] = tonumber(param) or 7
+		light_making_players[name] = tonumber(param) or 3
 		timer = -0.5
+		return true, "Placing lights automatically"
 	end
 })
 
-minetest.register_globalstep(function(dtime)
-	-- abort if noone uses it
+local function autoplace_step()
+	-- Abort if noone uses it
 	if not light_making_players then
 		return
 	end
 
-	-- abort that it doesn't shoot too often (change it if your pc runs faster)
-	timer = timer+dtime
-	if timer < 0.1 then
-		return
-	end
-	timer = 0
-
-	for name,maxlight in pairs(light_making_players) do
+	for name, maxlight in pairs(light_making_players) do
 		local player = minetest.get_player_by_name(name)
 		local pt = {type = "node"}
-		pt.above, pt.under = get_pointed_target(player, name)
-		if pt.above
-		and pos_placeable(pt.under) then
-			local node = player:get_inventory():get_stack("main", player:get_wield_index()):get_name()
+		pt.above, pt.under = get_pointed_target(player)
+		if pt.above then
+			local node = player:get_inventory():get_stack("main",
+				player:get_wield_index()):get_name()
 			local data = minetest.registered_nodes[node]
 			local failed
 			if not data then
 				-- support the chatcommand tool
-				node = player:get_inventory():get_stack("main", player:get_wield_index()+1):get_name()
+				node = player:get_inventory():get_stack("main",
+					player:get_wield_index()+1):get_name()
 				data = minetest.registered_nodes[node]
 				if not data then
-					inform(name, "You need to have a node next to or as your wielded item.")
+					inform(name, "You need to have a node next to or as " ..
+						"your wielded item.")
 					failed = true
 				end
 			end
@@ -279,18 +296,20 @@ minetest.register_globalstep(function(dtime)
 				local nodelight = data.light_source
 				if not nodelight
 				or nodelight < maxlight then
-					inform(name, "You need a node emitting light (enough light).")
+					inform(name,
+						"You need a node emitting light (enough light).")
 					failed = true
 				end
 				local light = minetest.get_node_light(pt.above, 0.5) or 0
 				if light <= maxlight
-				and minetest.get_node(pt.above).name == "air" then
+				and get_node_loaded(pt.above).name == "air" then
 					local sound = data.sounds
 					if sound then
 						sound = sound.place
 					end
 					if sound then
-						minetest.sound_play(sound.name, {pos=pt.above, gain=sound.gain})
+						minetest.sound_play(sound.name,
+							{pos = pt.above, gain = sound.gain})
 					end
 					minetest.item_place_node(ItemStack(node), player, pt)
 				end
@@ -303,4 +322,10 @@ minetest.register_globalstep(function(dtime)
 			end
 		end
 	end
-end)
+end
+
+local function autoplace()
+	autoplace_step()
+	minetest.after(0.1, autoplace)
+end
+autoplace()

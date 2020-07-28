@@ -1,5 +1,3 @@
-local load_time_start = minetest.get_us_time()
-
 local function inform(name, msg)
 	minetest.chat_send_player(name, msg)
 	minetest.log("info", "[cave_lighting] "..name..": "..msg)
@@ -305,12 +303,3 @@ minetest.register_globalstep(function(dtime)
 		end
 	end
 end)
-
-
-local time = (minetest.get_us_time() - load_time_start) / 1000000
-local msg = "[cave_lighting] loaded after ca. " .. time .. " seconds."
-if time > 0.01 then
-	print(msg)
-else
-	minetest.log("info", msg)
-end

@@ -85,19 +85,20 @@ local function get_ps(pos, maxlight, name, max)
 	return tab
 end
 
--- lits up a cave
+-- Lights up a cave
 local function place_torches(pos, maxlight, player, name)
-	-- get the light_source item
+	-- Get the light_source item
 	local inv = player:get_inventory()
 	local wi = player:get_wield_index()
 	local node = inv:get_stack("main", wi):get_name()
 	local data = minetest.registered_nodes[node]
 	if not data then
-		-- support the chatcommand tool
+		-- Support the chatcommand tool
 		node = inv:get_stack("main", wi+1):get_name()
 		data = minetest.registered_nodes[node]
 		if not data then
-			inform(name, "You need to have a node next to or as your wielded item.")
+			inform(name,
+				"You need to have a node next to or as your wielded item.")
 			return
 		end
 	end
@@ -107,7 +108,7 @@ local function place_torches(pos, maxlight, player, name)
 		inform(name, "You need a node emitting light (enough light).")
 		return
 	end
-	-- get possible positions
+	-- Get possible positions
 	local ps = get_ps(pos, maxlight, name, 200^3)
 	if not ps then
 		inform(name, "It doesn't seem to be dark there or the cave is too big.")
@@ -160,46 +161,46 @@ local function place_torches(pos, maxlight, player, name)
 	return {count, data.description or node, nodelight}
 end
 
--- gets something like pt.above, pt.under
-local function get_pt_air(player, name)
-	-- search the place where the player sees a dark cave
-	local pos = player:getpos()
-	pos.y = pos.y+1.625
-	pos = vector.round(pos)
+-- Returns the camera position of the player; it does not include
+-- the client-side offset, e.g. bobbing (see view_bobbing_amount)
+local function get_eye_pos(player)
+	local pos = vector.add(player:getpos(), player:get_eye_offset())
+	pos.y = pos.y + player:get_properties().eye_height
+	return pos
+end
+
+-- Returns pointed thing above and under positions for the player's view
+-- and tests if a node can be placed there
+local function get_pointed_target(player)
+	-- Search a target node where the player would be able to place a torch
+	local pos1 = get_eye_pos(player)
 	local dir = player:get_look_dir()
-	local p2 = vector.add(pos, vector.round(vector.multiply(dir, 20)))
-	local bl, pos2 = minetest.line_of_sight(pos, p2, 1)
-	if bl then
-		inform(name, "Could not find a node you look at.")
+	local pos2 = vector.add(pos1, vector.multiply(dir, 20))
+	local pointed = minetest.raycast(pos1, pos2, false, true)()
+	if not pointed then
+		return
+	end
+	local def_under = minetest.registered_nodes[
+		minetest.get_node(pointed.under).name]
+	local def_above = minetest.registered_nodes[
+		minetest.get_node(pointed.above).name]
+	if not def_under or not def_above
+	or not def_above.buildable_to or def_under.buildable_to then
+		-- Cannot place a node here
 		return
 	end
 
-	-- if rooms with 1 node thin walls are lighted the light nodes should be placed inside the room
-	pos = vector.new(pos2)
-	for _,c in pairs{"x", "y", "z"} do
-		local v = math.sign(dir[c])
-		pos[c] = pos[c]-v
-		if minetest.get_node(pos).name == "air" then
-			bl = true
-			break
-		end
-		pos[c] = pos[c]+v
-	end
-	if not bl then
-		inform(name, "There does not seem to be air near the node you looked at.")
-	end
-	return pos, pos2
+	return pointed.above, pointed.under
 end
 
 -- searches the position the player looked at and lights the cave
 local function light_cave(player, name, maxlight)
-	inform(name, "lighting a cave…")
-
-	local pos = get_pt_air(player, name)
+	local pos = get_pointed_target(player, name)
 	if not pos then
-		return false, "no air found"
+		return false, "No valid position for a torch placement found"
 	end
 
+	inform(name, "Lighting a cave…")
 	local t = place_torches(pos, maxlight, player, name)
 	if t then
 		if t[1] == 0 then
@@ -259,7 +260,7 @@ minetest.register_globalstep(function(dtime)
 	for name,maxlight in pairs(light_making_players) do
 		local player = minetest.get_player_by_name(name)
 		local pt = {type = "node"}
-		pt.above, pt.under = get_pt_air(player, name)
+		pt.above, pt.under = get_pointed_target(player, name)
 		if pt.above
 		and pos_placeable(pt.under) then
 			local node = player:get_inventory():get_stack("main", player:get_wield_index()):get_name()

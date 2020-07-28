@@ -3,4 +3,3 @@ For a description of this Minetest mod, please refer to
 
 TODO:
 * Take inventory items
-* API

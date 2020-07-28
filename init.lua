@@ -1,6 +1,7 @@
-
 local path = minetest.get_modpath"cave_lighting"
 local search_dfs = dofile(path .. "/fill_3d.lua")
+
+cave_lighting = {}
 
 local function inform(name, msg)
 	minetest.chat_send_player(name, msg)
@@ -99,7 +100,7 @@ local function search_positions(startpos, maxlight, pname, max_positions)
 end
 
 -- Lights up a cave
-local function place_torches(pos, maxlight, player, name)
+local function place_torches(pos, maxlight, player)
 	-- Get the light_source item
 	local inv = player:get_inventory()
 	local wi = player:get_wield_index()
@@ -211,8 +212,7 @@ local function get_pointed_target(player)
 	return pointed.above, pointed.under
 end
 
--- Searches the position the player looked at and lights the cave
-local function light_cave(player, maxlight)
+function cave_lighting.light_cave(player, maxlight)
 	local pos = get_pointed_target(player)
 	if not pos then
 		return false, "No valid position for a torch placement found"
@@ -240,7 +240,7 @@ minetest.register_chatcommand("light_cave",{
 		if not player then
 			return false, "Player not found"
 		end
-		return light_cave(player, tonumber(param) or 7)
+		return cave_lighting.light_cave(player, tonumber(param) or 7)
 	end
 })
 
@@ -248,6 +248,18 @@ minetest.register_chatcommand("light_cave",{
 -- Lazy torch placing
 
 local light_making_players
+
+function cave_lighting.enable_auto_placing(pname, maxlight)
+	light_making_players = light_making_players or {}
+	light_making_players[pname] = maxlight
+end
+
+function cave_lighting.disable_auto_placing(pname)
+	light_making_players[pname] = nil
+	if not next(light_making_players) then
+		light_making_players = nil
+	end
+end
 
 -- Chatcommand to automatically light the way while playing
 minetest.register_chatcommand("auto_light_placing",{
@@ -259,9 +271,7 @@ minetest.register_chatcommand("auto_light_placing",{
 		if not player then
 			return false, "Player not found"
 		end
-		light_making_players = light_making_players or {}
-		light_making_players[name] = tonumber(param) or 3
-		timer = -0.5
+		cave_lighting.enable_auto_placing(name, tonumber(param) or 3)
 		return true, "Placing lights automatically"
 	end
 })
@@ -272,8 +282,8 @@ local function autoplace_step()
 		return
 	end
 
-	for name, maxlight in pairs(light_making_players) do
-		local player = minetest.get_player_by_name(name)
+	for pname, maxlight in pairs(light_making_players) do
+		local player = minetest.get_player_by_name(pname)
 		local pt = {type = "node"}
 		pt.above, pt.under = get_pointed_target(player)
 		if pt.above then
@@ -287,7 +297,7 @@ local function autoplace_step()
 					player:get_wield_index()+1):get_name()
 				data = minetest.registered_nodes[node]
 				if not data then
-					inform(name, "You need to have a node next to or as " ..
+					inform(pname, "You need to have a node next to or as " ..
 						"your wielded item.")
 					failed = true
 				end
@@ -296,7 +306,7 @@ local function autoplace_step()
 				local nodelight = data.light_source
 				if not nodelight
 				or nodelight < maxlight then
-					inform(name,
+					inform(pname,
 						"You need a node emitting light (enough light).")
 					failed = true
 				end
@@ -315,10 +325,7 @@ local function autoplace_step()
 				end
 			end
 			if failed then
-				light_making_players[name] = nil
-				if not next(light_making_players) then
-					light_making_players = nil
-				end
+				cave_lighting.disable_auto_placing(pname)
 			end
 		end
 	end

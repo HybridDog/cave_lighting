@@ -18,6 +18,13 @@ local function get_node_loaded(pos)
 	return minetest.get_node(pos)
 end
 
+-- Places a node with the same effects than the player's placing
+local function place_node(def, wi, stack, player, pt, inv)
+	local leftover = def.on_place(stack, player, pt)
+	inv:set_stack("main", wi, leftover)
+	return leftover
+end
+
 -- Tests if theres a node an e.g. torch is allowed to be placed on
 local function pos_placeable(pos)
 	local undernode = get_node_loaded(pos).name
@@ -104,18 +111,21 @@ local function place_torches(pos, maxlight, player)
 	-- Get the light_source item
 	local inv = player:get_inventory()
 	local wi = player:get_wield_index()
-	local node = inv:get_stack("main", wi):get_name()
-	local data = minetest.registered_nodes[node]
-	if not data then
+	local stack = inv:get_stack("main", wi)
+	local node_name = stack:get_name()
+	local def = minetest.registered_nodes[node_name]
+	if not def then
 		-- Support the chatcommand tool
-		node = inv:get_stack("main", wi+1):get_name()
-		data = minetest.registered_nodes[node]
-		if not data then
+		wi = wi+1
+		stack = inv:get_stack("main", wi)
+		node_name = stack:get_name()
+		def = minetest.registered_nodes[node_name]
+		if not def then
 			return false,
 				"You need to have a node next to or as your wielded item."
 		end
 	end
-	local nodelight = data.light_source
+	local nodelight = def.light_source
 	if not nodelight
 	or nodelight < maxlight then
 		return false, "You need a node emitting light (enough light)."
@@ -125,7 +135,7 @@ local function place_torches(pos, maxlight, player)
 	if not ps then
 		return false, "It doesn't seem to be dark there or the cave is too big."
 	end
-	local sound = data.sounds
+	local sound = def.sounds
 	if sound then
 		sound = sound.place
 	end
@@ -138,26 +148,34 @@ local function place_torches(pos, maxlight, player)
 	-- where the light is 3: (6,7,6,5,6,7)
 	local l1 = math.max(maxlight - (nodelight - maxlight) + 2, 0)
 	local n = #ps
-	for k = n, 1, -1 do
-		local pt = ps[k]
-		local pos = pt.above
-		local light = minetest.get_node_light(pos, 0.5) or 0
-		if light == l1 then
-			count = count+1
-			if sound
-			and count < 50 then
-				minetest.sound_play(sound.name, {pos = pos,
-					gain = sound.gain / count})
+	local found = true
+	while found do
+		found = false
+		for k = n, 1, -1 do
+			local pt = ps[k]
+			local pos = pt.above
+			local light = minetest.get_node_light(pos, 0.5) or 0
+			if light == l1 then
+				pt.type = "node"
+				stack = place_node(def, wi, stack, player, pt, inv)
+				if stack:get_name() ~= node_name then
+					return false, "No remaining light nodes"
+				end
+				count = count+1
+				if sound
+				and count < 50 then
+					minetest.sound_play(sound.name, {pos = pos,
+						gain = sound.gain / count})
+				end
+				found = true
+				ps[k] = ps[n]
+				ps[n] = nil
+				n = n-1
+			elseif light > maxlight then
+				ps[k] = ps[n]
+				ps[n] = nil
+				n = n-1
 			end
-			pt.type = "node"
-			minetest.item_place_node(ItemStack(node), player, pt)
-			ps[k] = ps[n]
-			ps[n] = nil
-			n = n-1
-		elseif light > maxlight then
-			ps[k] = ps[n]
-			ps[n] = nil
-			n = n-1
 		end
 	end--]]
 
@@ -166,18 +184,21 @@ local function place_torches(pos, maxlight, player)
 		local pos = pt.above
 		local light = minetest.get_node_light(pos, 0.5) or 0
 		if light <= maxlight then
+			pt.type = "node"
+			stack = place_node(def, wi, stack, player, pt, inv)
+			if stack:get_name() ~= node_name then
+				return false, "No remaining light nodes"
+			end
 			count = count+1
 			if sound
 			and count < 50 then
 				minetest.sound_play(sound.name, {pos = pos,
 					gain = sound.gain / count})
 			end
-			pt.type = "node"
-			minetest.item_place_node(ItemStack(node), player, pt)
 		end
 	end
 
-	return {count, data.description or node, nodelight}
+	return {count, def.description or stack:get_name(), nodelight}
 end
 
 -- Returns the camera position of the player; it does not include
@@ -287,23 +308,24 @@ local function autoplace_step()
 		local pt = {type = "node"}
 		pt.above, pt.under = get_pointed_target(player)
 		if pt.above then
-			local node = player:get_inventory():get_stack("main",
-				player:get_wield_index()):get_name()
-			local data = minetest.registered_nodes[node]
+			local wi = player:get_wield_index()
+			local inv = player:get_inventory()
+			local stack = inv:get_stack("main", wi)
+			local def = minetest.registered_nodes[stack:get_name()]
 			local failed
-			if not data then
+			if not def then
 				-- support the chatcommand tool
-				node = player:get_inventory():get_stack("main",
-					player:get_wield_index()+1):get_name()
-				data = minetest.registered_nodes[node]
-				if not data then
+				wi = wi + 1
+				stack = inv:get_stack("main", wi)
+				def = minetest.registered_nodes[stack:get_name()]
+				if not def then
 					inform(pname, "You need to have a node next to or as " ..
 						"your wielded item.")
 					failed = true
 				end
 			end
-			if data then
-				local nodelight = data.light_source
+			if def then
+				local nodelight = def.light_source
 				if not nodelight
 				or nodelight < maxlight then
 					inform(pname,
@@ -313,7 +335,7 @@ local function autoplace_step()
 				local light = minetest.get_node_light(pt.above, 0.5) or 0
 				if light <= maxlight
 				and get_node_loaded(pt.above).name == "air" then
-					local sound = data.sounds
+					local sound = def.sounds
 					if sound then
 						sound = sound.place
 					end
@@ -321,7 +343,7 @@ local function autoplace_step()
 						minetest.sound_play(sound.name,
 							{pos = pt.above, gain = sound.gain})
 					end
-					minetest.item_place_node(ItemStack(node), player, pt)
+					place_node(def, wi, stack, player, pt, inv)
 				end
 			end
 			if failed then

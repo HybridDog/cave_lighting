@@ -107,7 +107,7 @@ local function search_positions(startpos, maxlight, pname, max_positions)
 end
 
 -- Lights up a cave
-local function place_torches(pos, maxlight, player)
+local function place_torches(startpos, maxlight, player)
 	-- Get the light_source item
 	local inv = player:get_inventory()
 	local wi = player:get_wield_index()
@@ -131,7 +131,8 @@ local function place_torches(pos, maxlight, player)
 		return false, "You need a node emitting light (enough light)."
 	end
 	-- Get possible positions
-	local ps = search_positions(pos, maxlight, name, 200^3)
+	local ps = search_positions(startpos, maxlight, player:get_player_name(),
+		200^3)
 	if not ps then
 		return false, "It doesn't seem to be dark there or the cave is too big."
 	end

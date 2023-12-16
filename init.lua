@@ -137,6 +137,9 @@ local function place_torches(startpos, maxlight, player)
 	if not ps then
 		return false, "It doesn't seem to be dark there or the cave is too big."
 	end
+	inform(player:get_player_name(),
+		('Collected %d potential placement positions. Placing "%s"s at some ' ..
+		"of them..."):format(#ps, def.description))
 	local sound = def.sounds
 	if sound then
 		sound = sound.place

@@ -41,19 +41,20 @@ local function pos_placeable(pos)
 end
 
 local moves_touch = {
-	{x = -1, y = 0, z = 0},
-	{x = 1, y = 0, z = 0},
-	{x = 0, y = -1, z = 0},
-	{x = 0, y = 1, z = 0},
-	{x = 0, y = 0, z = -1},
-	{x = 0, y = 0, z = 1},
+	vector.new(-1, 0, 0),
+	vector.new(1, 0, 0),
+	vector.new(0, -1, 0),
+	vector.new(0, 1, 0),
+	vector.new(0, 0, -1),
+	vector.new(0, 0, 1),
 }
-local moves_near = {}
-for x = -1,1 do
+local moves_vi_near = {}
+for z = -1,1 do
 	for y = -1,1 do
-		for z = -1,1 do
+		for x = -1,1 do
 			if x*x + y*y + z*z > 0 then
-				moves_near[#moves_near+1] = {x = x, y = y, z = z}
+				moves_vi_near[#moves_vi_near+1] =
+					z * 0x100000000 + y * 0x10000 + x
 			end
 		end
 	end
@@ -84,8 +85,7 @@ local function search_positions(startpos, maxlight, pname)
 	local visited = {}
 	local found = {}
 	local num_found = 0
-	local function on_visit(pos)
-		local vi = minetest.hash_node_position(pos)
+	local function on_visit(vi)
 		if visited[vi] then
 			return false
 		end
@@ -93,6 +93,7 @@ local function search_positions(startpos, maxlight, pname)
 		if num_found > max_positions then
 			return false
 		end
+		local pos = minetest.get_position_from_hash(vi)
 		local under_pos = pos_allowed(pos, maxlight, pname)
 		if under_pos then
 			num_found = num_found+1
@@ -101,8 +102,11 @@ local function search_positions(startpos, maxlight, pname)
 		end
 		return false
 	end
-	on_visit(startpos)
-	search_dfs(on_visit, startpos, vector.add, moves_near)
+	local vi_start = minetest.hash_node_position(startpos)
+	on_visit(vi_start)
+	search_dfs(on_visit, vi_start, function(vi, vi_off)
+		return vi + vi_off
+	end, moves_vi_near)
 	-- Do not return the positions if the search has found too many, to avoid
 	-- fragmented lighting
 	return num_found <= max_positions and num_found > 0 and found

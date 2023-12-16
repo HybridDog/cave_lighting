@@ -205,7 +205,7 @@ end
 -- Returns the camera position of the player; it does not include
 -- the client-side offset, e.g. bobbing (see view_bobbing_amount)
 local function get_eye_pos(player)
-	local pos = vector.add(player:getpos(), player:get_eye_offset())
+	local pos = vector.add(player:get_pos(), player:get_eye_offset())
 	pos.y = pos.y + player:get_properties().eye_height
 	return pos
 end

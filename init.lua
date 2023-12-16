@@ -78,7 +78,9 @@ end
 
 -- Finds out possible places for a light node in a cave with an efficient
 -- variant of Depth First Search
-local function search_positions(startpos, maxlight, pname, max_positions)
+local function search_positions(startpos, maxlight, pname)
+	local max_positions = tonumber(minetest.settings:get(
+		"cave_lighting.maximum_search_positions")) or 8000000
 	local visited = {}
 	local found = {}
 	local num_found = 0
@@ -131,8 +133,7 @@ local function place_torches(startpos, maxlight, player)
 		return false, "You need a node emitting light (enough light)."
 	end
 	-- Get possible positions
-	local ps = search_positions(startpos, maxlight, player:get_player_name(),
-		200^3)
+	local ps = search_positions(startpos, maxlight, player:get_player_name())
 	if not ps then
 		return false, "It doesn't seem to be dark there or the cave is too big."
 	end

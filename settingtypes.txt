@@ -1,0 +1,3 @@
+#    A limit on the number of positions which are traversed to search places for
+#    torch placement
+cave_lighting.maximum_search_positions (Maximum number of search positions) int 8000000 1 100000000000

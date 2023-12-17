@@ -109,7 +109,7 @@ local function search_positions(startpos, maxlight, pname)
 	end, moves_vi_near)
 	-- Do not return the positions if the search has found too many, to avoid
 	-- fragmented lighting
-	return num_found <= max_positions and num_found > 0 and found
+	return found, num_found <= max_positions
 end
 
 -- Lights up a cave
@@ -137,9 +137,19 @@ local function place_torches(startpos, maxlight, player)
 		return false, "You need a node emitting light (enough light)."
 	end
 	-- Get possible positions
-	local ps = search_positions(startpos, maxlight, player:get_player_name())
-	if not ps then
-		return false, "It doesn't seem to be dark there or the cave is too big."
+	local ps, found_all = search_positions(startpos, maxlight,
+		player:get_player_name())
+	if #ps == 0 then
+		return false, "Found no potential placement positions."
+	end
+	if not found_all then
+		local allow_incomplete_lighting = minetest.settings:get_bool(
+			"cave_lighting.allow_incomplete_lighting", false)
+		if not allow_incomplete_lighting then
+			return false, "The cave is too big."
+		end
+		inform(player:get_player_name(),
+			"The cave is too big, so it is lit only partially.")
 	end
 	inform(player:get_player_name(),
 		('Collected %d potential placement positions. Placing "%s"s at some ' ..

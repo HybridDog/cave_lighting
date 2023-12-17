@@ -1,3 +1,8 @@
 #    A limit on the number of positions which are traversed to search places for
-#    torch placement
+#    the placement of light-source nodes (e.g. torches)
 cave_lighting.maximum_search_positions (Maximum number of search positions) int 8000000 1 100000000000
+
+#    If enabled, place light-source nodes even if the limit specified in
+#    cave_lighting.maximum_search_positions has been reached,
+#    which causes caves to be partially-lit.
+cave_lighting.allow_incomplete_lighting (Allow incomplete lighting) bool false
